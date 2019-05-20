@@ -1,12 +1,10 @@
 from telegram.ext import Updater, CommandHandler
-import networkx as nx
-import matplotlib.pyplot as plt
+import graphs
 
 with open('token', 'r') as file:
     TOKEN = file.readline()
 
-graphs = {}
-weighted = {}
+
 help_text = ('/graph <directed> <weighted> - создать новый граф, оба '
              'аргумента должны быть числами 0 или 1\n/add_node(/an) '
              '<node_name1> <node_name2> ... - добавить в граф вершины с '
@@ -26,30 +24,6 @@ algorithms_text = ('/sssp <source> - найти кратчайшие расст�
                    'ориентированного графа)')
 
 
-def is_0_or_1(a):
-    """
-    This function checks, is given value 0 or 1
-    :return: bool
-    """
-    try:
-        b = int(a)
-        return b == 0 or b == 1
-    except ValueError:
-        return False
-
-
-def is_integer(a):
-    """
-    This function checks, is given value integer
-    :return: bool
-    """
-    try:
-        int(a)
-        return True
-    except ValueError:
-        return False
-
-
 def start(bot, update):
     """
     Answer to "/start"
@@ -59,23 +33,11 @@ def start(bot, update):
 
 def add_node(bot, update):
     """
-    Adds node to graph
+    Adds node to graph 1936
     """
     user_id = update.message.from_user.id
     node_names = update.message.text.split()[1:]
-    if len(node_names) > 100000:
-        update.message.reply_text("Вы пытаетесь добавить слишком много вершин")
-        return
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
-    for node_name in node_names:
-        if node_name in graphs[user_id].nodes:
-            update.message.reply_text("В графе уже есть одна из этих вершин")
-            return
-    for node_name in node_names:
-        graphs[user_id].add_node(node_name)
-    update.message.reply_text("Готово!")
+    update.message.reply_text(graphs.add_node(user_id, node_names))
 
 
 def new_graph(bot, update):
@@ -84,22 +46,7 @@ def new_graph(bot, update):
     """
     graph = update.message.text.split()[1:]
     user_id = update.message.from_user.id
-    correct = True
-    for i in range(len(graph)):
-        if i > 2 or not is_0_or_1(graph[i]):
-            correct = False
-            break
-        graph[i] = int(graph[i])
-    if not correct:
-        update.message.reply_text(
-            "Вы ввели некорректные данные. Обратитесь к команде help")
-        return
-    if graph[0] == 0:
-        graphs[user_id] = nx.Graph()
-    else:
-        graphs[user_id] = nx.DiGraph()
-    weighted[user_id] = bool(graph[1])
-    update.message.reply_text("Готово!")
+    update.message.reply_text(graphs.create_graph(user_id, graph))
 
 
 def show_nodes(bot, update):
@@ -107,13 +54,7 @@ def show_nodes(bot, update):
     Sends all nodes from graph
     """
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
-    nodes = ""
-    for node in graphs[user_id].nodes:
-        nodes += "{} ".format(node)
-    update.message.reply_text(nodes)
+    update.message.reply_text(graphs.show_nodes(user_id))
 
 
 def help_func(bot, update):
@@ -128,9 +69,7 @@ def delete_graph(bot, update):
     Deletes graph
     """
     user_id = update.message.from_user.id
-    if user_id in graphs:
-        graphs.pop(user_id)
-        weighted.pop(user_id)
+    graphs.delete_graph(user_id)
     update.message.reply_text("Готово!")
 
 
@@ -139,19 +78,7 @@ def show_edges(bot, update):
     Sends all edges from graph
     """
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
-    if weighted[user_id]:
-        edges = ""
-        for edge in graphs[user_id].edges:
-            edges += "{} {} {}\n".format(edge[0], edge[1], graphs[user_id][
-                edge[0]][edge[1]]['weight'])
-    else:
-        edges = ""
-        for edge in graphs[user_id].edges:
-            edges += "{} {}\n".format(edge[0], edge[1])
-    update.message.reply_text(edges)
+    update.message.reply_text(graphs.show_edges(user_id))
 
 
 def update_edge(bot, update):
@@ -159,26 +86,8 @@ def update_edge(bot, update):
     Updates weight of edge in graph or creates one
     """
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
     edge = update.message.text.split()[1:]
-    if weighted[user_id]:
-        if len(edge) != 3 or not is_integer(edge[2]):
-            update.message.reply_text(
-                "Вы ввели некорректные данные. Обратитесь к команде help")
-            return
-        if edge[0] not in graphs[user_id] or edge[1] not in graphs[user_id]:
-            update.message.reply_text("Таких вершин нет")
-            return
-        try:
-            graphs[user_id][edge[0]][edge[1]]['weight'] = int(edge[2])
-            update.message.reply_text("Вес ребра изменён")
-        except KeyError:
-            graphs[user_id].add_edge(edge[0], edge[1], weight=int(edge[2]))
-            update.message.reply_text("Ребро добавлено")
-    else:
-        update.message.reply_text("У вас невзвешенный граф")
+    update.message.reply_text(graphs.update_edge(user_id, edge))
 
 
 def draw_graph(bot, update):
@@ -186,16 +95,9 @@ def draw_graph(bot, update):
     Sends picture with current graph
     """
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
-    pos = nx.spring_layout(graphs[user_id])
-    nx.draw(graphs[user_id], pos)
-    nx.draw_networkx_labels(graphs[user_id], pos)
-    weights = nx.get_edge_attributes(graphs[user_id], 'weight')
-    nx.draw_networkx_edge_labels(graphs[user_id], pos, edge_labels=weights)
-    plt.savefig('temp.png', dpi=300)
-    plt.close()
+    ans = graphs.draw_graph(user_id)
+    if ans != "OK":
+        update.message.reply_text(ans)
     update.message.reply_photo(photo=open('temp.png', 'rb'))
 
 
@@ -204,17 +106,8 @@ def delete_node(bot, update):
     Deletes node from graph
     """
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
     node_names = update.message.text.split()[1:]
-    for node_name in node_names:
-        if node_name not in graphs[user_id]:
-            update.message.reply_text("Одной из вершин нет в графе")
-            return
-    for node_name in node_names:
-        graphs[user_id].remove_node(node_name)
-    update.message.reply_text("Готово!")
+    update.message.reply_text(graphs.delete_node(user_id, node_names))
 
 
 def sssp(bot, update):
@@ -222,123 +115,30 @@ def sssp(bot, update):
     Applies Dijkstra or Ford-Bellman algorithm for this graph
     """
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
     start_node = update.message.text.split()[1:]
-    if len(start_node) != 1:
-        update.message.reply_text(
-            "Вы ввели некорректные данные. Обратитесь к команде help")
-        return
-    if start_node[0] not in graphs[user_id].nodes:
-        update.message.reply_text("Такой вершины нет в графе")
-        return
-    sssp = nx.shortest_path_length(graphs[user_id], source=start_node[0],
-                                   weight='weight')
-    result = ''
-    for node in sssp.keys():
-        result += '{}: {}\n'.format(node, sssp[node])
-    update.message.reply_text(result)
+    update.message.reply_text(graphs.dijkstra(user_id, start_node))
 
 
 def mst(bot, update):
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
-    if not weighted[user_id]:
-        update.message.reply_text("У вас невзвешенный граф")
-        return
-    if isinstance(graphs[user_id], nx.DiGraph):
-        source = update.message.text.split()[1:]
-        if len(source) != 1:
-            update.message.reply_text(
-                "Вы ввели некорректные данные. Обратитесь к команде help")
-        source = source[0]
-        graphs[user_id].add_node('Extra_node_for_algo')
-        graphs[user_id].add_edge('Extra_node_for_algo', source, weight=-1)
-        t = nx.minimum_spanning_arborescence(graphs[user_id], attr='weight')
-        t.remove_node('Extra_node_for_algo')
-        graphs[user_id].remove_node('Extra_node_for_algo')
-    else:
-        t = nx.minimum_spanning_tree(graphs[user_id])
-    edges = ""
-    for edge in t.edges:
-        edges += "{} {} {}\n".format(edge[0], edge[1], t[edge[0]][edge[1]][
-            'weight'])
-    update.message.reply_text(edges)
+    source = update.message.text.split()[1:]
+    update.message.reply_text(graphs.mst(user_id, source))
 
 
 def mst_draw(bot, update):
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
+    source = update.message.text.split()[1:]
+    ans = graphs.draw_mst(user_id, source)
+    if ans != "OK":
+        update.message.reply_text(ans)
         return
-    if not weighted[user_id]:
-        update.message.reply_text("У вас невзвешенный граф")
-        return
-    if isinstance(graphs[user_id], nx.DiGraph):
-        source = update.message.text.split()[1:]
-        if len(source) != 1:
-            update.message.reply_text(
-                "Вы ввели некорректные данные. Обратитесь к команде help")
-            return
-        source = source[0]
-        graphs[user_id].add_node('Extra_node_for_algo')
-        graphs[user_id].add_edge('Extra_node_for_algo', source, weight=-1)
-        t = nx.minimum_spanning_arborescence(graphs[user_id], attr='weight')
-        t.remove_node('Extra_node_for_algo')
-        graphs[user_id].remove_node('Extra_node_for_algo')
-    else:
-        t = nx.minimum_spanning_tree(graphs[user_id])
-    pos = nx.spring_layout(t)
-    nx.draw(t, pos)
-    nx.draw_networkx_labels(t, pos)
-    weights = nx.get_edge_attributes(t, 'weight')
-    nx.draw_networkx_edge_labels(t, pos, edge_labels=weights)
-    plt.savefig('temp.png', dpi=300)
-    plt.close()
     update.message.reply_photo(photo=open('temp.png', 'rb'))
-
 
 
 def add_edge(bot, update):
     user_id = update.message.from_user.id
-    if user_id not in graphs:
-        update.message.reply_text("У вас еще нет графа")
-        return
     lines = update.message.text.split('\n')
-    if weighted[user_id]:
-        params_of_edge = 3
-    else:
-        params_of_edge = 2
-    lines[0] = ' '.join(lines[0].split()[1:])
-    for line in lines:
-        line = line.split()
-        if len(line) != params_of_edge:
-            update.message.reply_text(
-                "Вы ввели некорректные данные. Обратитесь к команде help")
-            return
-        if params_of_edge == 3 and not is_integer(line[2]):
-            update.message.reply_text(
-                "Вы ввели некорректные данные. Обратитесь к команде help")
-            return
-        if line[0] not in graphs[user_id] or line[1] not in graphs[user_id]:
-            update.message.reply_text("Таких вершин нет")
-            return
-        try:
-            temp = graphs[user_id][line[0]][line[1]]
-            update.message.reply_text("Такое ребро уже есть")
-            return
-        except KeyError:
-            pass
-    for line in lines:
-        line = line.split()
-        if params_of_edge == 3:
-            graphs[user_id].add_edge(line[0], line[1], weight=int(line[2]))
-        else:
-            graphs[user_id].add_edge(line[0], line[1])
-    update.message.reply_text("Готово!")
+    update.message.reply_text(graphs.add_edges(user_id, lines))
 
 
 def algo_help(bot, update):
